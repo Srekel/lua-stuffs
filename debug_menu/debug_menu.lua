@@ -221,29 +221,81 @@ end
 --██║██║ ╚████║██║   ██║
 --╚═╝╚═╝  ╚═══╝╚═╝   ╚═╝
 
---local function create_menu_item(config_name, config, debug_setting_table)
-	--local menu_item_type = config.type or "folder"
-	--local menu_item = MenuItemClasses[menu_item_type](config_name, config, debug_setting_table) -- silly dispatch
-	--menu_item.title = menu_item.title or config_name_to_title(config_name)
-	--menu_item.type = menu_item_type -- todo uuugh
-
-	--if menu_item_type == "folder" then -- todo blesch
-		--for child_config_name, child_config in pairs(config) do
-			--local child_menu_item = create_menu_item(child_config_name, child_config, debug_setting_table)
-			--child_menu_item.parent = menu_item
-			--menu_item.children[#menu_item.children + 1] = child_menu_item
-		--end
-	--end
-
-	--menu_item.num_children = menu_item.children and #menu_item.children or 0
-	--if menu_item.num_children > 0 then
-		--table.sort(menu_item.children, menu_item_sorter)
-	--else
+local function generate_children__folder(menu_item, config_name, config, debug_setting_table)
+	local num_children = 0
+	menu_item.children = {}
+	for child_config_name, child_config in pairs(config) do
+		local child_menu_item = create_menu_item(child_config_name, child_config, debug_setting_table)
+		child_menu_item.parent = menu_item
+		menu_item.children[#menu_item.children + 1] = child_config_name
+		menu_item.children[#menu_item.children + 1] = child_menu_item
 		
-	--end
+		num_children = num_children + 1
+	end
+	
+	menu_item.num_children = num_children
+end
 
-	--return menu_item
---end
+BOOL_CHILDREN = {"true", true, "false", false}
+local function generate_children__bool(menu_item, config_name, config, debug_setting_table)
+	menu_item.children = BOOL_CHILDREN
+	menu_item.num_children = 2
+end
+
+local function activate__folder(menu_item, index, debug_setting_table)
+	local child_menu_item = menu_item.children[index * 2]
+	if not child_menu_item.expanded then
+		child_menu_item.expanded = true
+		child_menu_item.generate_children(child_menu_item, debug_setting_table)
+	end
+	-- debug_setting_table[menu_item.setting_name] = value
+	-- if menu_item.set_func then
+		-- menu_item.set_func(index, value)
+	-- end
+end
+
+local function deactivate__folder(menu_item, index, debug_setting_table)
+	local child_menu_item = menu_item.children[index * 2]
+	child_menu_item.expanded = false
+end
+
+local function activate__bool(menu_item, index, debug_setting_table)
+	local value = menu_item.children[index * 2]
+	debug_setting_table[menu_item.setting_name] = value
+end
+
+local function create_menu_item(config_name, config, debug_setting_table)
+	-- local on_expand = expand_folder
+	-- if config.values then 
+		-- if config.values == "bool" then
+			-- on_expand = expand_bool
+		-- else
+		-- end
+	-- end
+	local activate = activate__folder
+	local generate_children = generate_children__folder
+	if config.values then 
+		if config.values == "bool" then
+			activate = activate__bool
+			generate_children = generate_children__bool
+		else
+			assert(false, "Unknown menu item values type " .. tostring(config.value))
+		end
+	end
+	
+	local menu_item = {
+		title = config.title or config_name_to_title(config_name),
+		description = config.description,
+		expanded = false,
+		children = {},
+		num_children = 0,
+		generate_children = generate_children,
+		activate = activate,
+		set_func = config.func,
+	}
+	
+	return menu_item
+end
 
 local default_input_update_function = function(input_data)
 	local Keyboard = stingray.Keyboard
@@ -258,6 +310,7 @@ end
 local function create(world, input_data, config, debug_setting_table)
 	local gui = World.create_screen_gui(world, "immediate")
 	local menu_root = create_menu_item("root", config, debug_setting_table)
+	menu_root.activate(menu_item, 1, debug_setting_table)
 
 	local input_update_function = nil
 	if input_data == nil then
